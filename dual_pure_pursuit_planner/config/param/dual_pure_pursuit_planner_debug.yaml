@@ -1,0 +1,20 @@
+# デバック用
+
+# デバック用の情報を可視化するかの設定用
+# trueなら可視化
+visualize_for_debug: true
+
+# global_pathをtarget_pathとするときはtrue
+use_global_path: true
+
+# 制御周波数[Hz]
+hz: 10              # ループ周波数 [Hz]
+
+# carrotまでの距離
+dist_to_carrot1: 1.0  # carrot1（cmd_vel計算用ターゲット） [m]
+dist_to_carrot2: 0.5  # carrot2（ステア角計算用ターゲット） [m]
+
+# frame_id
+world_frame: "odom"            # 目標軌道
+robot_frame: "base_footprint"  # ロボット
+
