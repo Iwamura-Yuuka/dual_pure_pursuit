@@ -10,6 +10,7 @@ Panels:
         - /Odometry1
         - /Odometry1/Shape1
         - /PointStamped2
+        - /Path2
       Splitter Ratio: 0.5
     Tree Height: 752
   - Class: rviz/Selection
@@ -96,7 +97,7 @@ Visualization Manager:
           Scale: 1
           Value: true
         Value: false
-      Enabled: true
+      Enabled: false
       Keep: 1
       Name: Odometry
       Position Tolerance: 0.10000000149011612
@@ -113,28 +114,62 @@ Visualization Manager:
         Value: Arrow
       Topic: /sq2_ccv/diff_drive_steering_controller/odom
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Class: rviz/PointStamped
       Color: 204; 41; 204
-      Enabled: true
+      Enabled: false
       History Length: 1
       Name: PointStamped
       Queue Size: 10
       Radius: 0.20000000298023224
       Topic: /carrot11
       Unreliable: false
-      Value: true
+      Value: false
     - Alpha: 1
       Class: rviz/PointStamped
-      Color: 0; 0; 255
-      Enabled: true
+      Color: 255; 144; 16
+      Enabled: false
       History Length: 1
       Name: PointStamped
       Queue Size: 10
       Radius: 0.20000000298023224
       Topic: /carrot22
       Unreliable: false
+      Value: false
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 0; 255
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.10000000149011612
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Queue Size: 10
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /optimal_local_path
+      Unreliable: false
+      Value: true
+    - Alpha: 0.699999988079071
+      Class: rviz/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map
+      Topic: /local_map
+      Unreliable: false
+      Use Timestamp: false
       Value: true
   Enabled: true
   Global Options:
@@ -195,4 +230,4 @@ Window Geometry:
     collapsed: true
   Width: 960
   X: 2880
-  Y: 0
+  Y: 1080

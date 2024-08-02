@@ -14,5 +14,7 @@
   <depend>geometry_msgs</depend>
   <depend>tf</depend>
   <depend>tf2</depend>
+  <depend>ccv_dynamixel_msgs</depend>
+  <depend>dynamixel_workbench_msgs</depend>
 
 </package>
