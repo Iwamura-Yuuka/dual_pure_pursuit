@@ -1,16 +1,17 @@
 <?xml version="1.0"?>
 <launch>
-  <!-- 直線を追従 -->
+  <!-- 半円をつなげたコースを追従 -->
   <!-- config file path -->
   <arg name="rviz_settings" default="$(find dual_pure_pursuit_planner)/config/rviz/debug.rviz"/>
-  <arg name="straight_line_creator_settings" default="$(find straight_line_creator)/config/param/straight_line_creator_debug.yaml"/>
+  <arg name="simple_path_creator_settings" default="$(find follow_path_creator)/config/param/simple_path_creator.yaml"/>
   <arg name="ped_state_transformer_settings" default="$(find ped_state_transformer)/config/param/debug.yaml"/>
   <arg name="spaciss_obs_map_creator_settings" default="$(find spaciss_obs_map_creator)/config/param/spaciss_obs_map_creator_debug.yaml"/>
   <!-- <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/dual_pure_pursuit_planner_debug.yaml"/> -->
 
   <!-- node launch -->
-  <node pkg="straight_line_creator" type="straight_line_creator_node" name="straight_line_creator">
-    <rosparam command="load" file="$(arg straight_line_creator_settings)"/>
+  <node pkg="follow_path_creator" type="simple_path_creator" name="simple_path_creator" output="screen">
+    <rosparam command="load" file="$(arg simple_path_creator_settings)"/>
+    <remap from="/target_path" to="/global_path"/>
   </node>
   <node pkg="ped_state_transformer" type="ped_state_transformer_node" name="ped_state_transformer">
     <rosparam command="load" file="$(arg ped_state_transformer_settings)"/>
@@ -31,17 +32,21 @@
 
   <!-- =============== Move ccv =============== -->
   <!-- config file path -->
-  <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/dual_pure_pursuit_planner_debug.yaml"/>
+  <!-- <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/dual_pure_pursuit_planner_debug.yaml"/> -->
 
   <!-- node launch -->
-  <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
+  <!-- <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
     <rosparam command="load" file="$(arg dual_pure_pursuit_planner_settings)"/>
     <remap from="/predicted_path" to="/global_path"/>
     <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
     <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
-  </node>
+  </node> -->
 
-  <!-- <node name="pure_pursuit_steering" pkg="ccv_pure_pursuit_steering" type="ccv_pure_pursuit_steering">
+
+
+
+
+  <node name="pure_pursuit_steering" pkg="ccv_pure_pursuit_steering" type="ccv_pure_pursuit_steering">
     <param name="max_target_velocity" value="1.2"/>
     <param name="max_steering_angle" value="20.0"/>
     <param name="hz" value="50"/>
@@ -53,7 +58,7 @@
     <param name="robot_frame_id" value="base_footprint"/>
     <remap from="/predicted_path" to="/global_path"/>
     <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/> 
-  </node> -->
+  </node>
 
   <node name="steering_angle_publisher" pkg="ccv_pure_pursuit_steering" type="steering_angle_publisher"/>
   
@@ -113,13 +118,4 @@
 
   <!-- rviz -->
   <node pkg="rviz" type="rviz" name="sim_rviz" args="-d $(find pedsim_simulator)/rviz/with_ccv$(arg ns).rviz" if="$(arg visualize)"/>
-
-   <!-- =============== data_matomerun =============== -->
-  <!-- config file path -->
-  <arg name="human_dist_calculator_settings" default="$(find robomech2024)/config/param/st50_hdc.yaml"/>
-
-  <!-- node launch -->
-  <node pkg="human_dist_calculator" type="human_dist_calculator_node" name="human_dist_calculator" output="screen">
-    <rosparam command="load" file="$(arg human_dist_calculator_settings)"/>
-  </node>
 </launch>

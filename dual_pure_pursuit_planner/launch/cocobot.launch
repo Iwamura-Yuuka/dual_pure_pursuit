@@ -1,63 +1,92 @@
 <?xml version="1.0"?>
 <launch>
-  <!-- 直線を追従 -->
+  <!-- =============== local_cocobot =============== -->
   <!-- config file path -->
-  <arg name="rviz_settings" default="$(find dual_pure_pursuit_planner)/config/rviz/debug.rviz"/>
+  <arg name="rviz_settings" default="$(find target_path_planner)/config/rviz/debug_with_ccv.rviz"/>
   <arg name="straight_line_creator_settings" default="$(find straight_line_creator)/config/param/straight_line_creator_debug.yaml"/>
+  <arg name="local_goal_maker_settings" default="$(find local_goal_maker)/config/param/local_goal_maker_debug.yaml"/>
+  <arg name="pedestrian_state_predictor_settings" default="$(find pedestrian_state_predictor)/config/param/pedestrian_state_predictor_debug.yaml"/>
+  <arg name="cost_map_creator_settings" default="$(find cost_map_creator)/config/param/cost_map_creator_debug.yaml"/>
+  <arg name="target_path_planner_settings" default="$(find target_path_planner)/config/param/target_path_planner_debug.yaml"/>
   <arg name="ped_state_transformer_settings" default="$(find ped_state_transformer)/config/param/debug.yaml"/>
   <arg name="spaciss_obs_map_creator_settings" default="$(find spaciss_obs_map_creator)/config/param/spaciss_obs_map_creator_debug.yaml"/>
-  <!-- <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/dual_pure_pursuit_planner_debug.yaml"/> -->
 
   <!-- node launch -->
   <node pkg="straight_line_creator" type="straight_line_creator_node" name="straight_line_creator">
     <rosparam command="load" file="$(arg straight_line_creator_settings)"/>
   </node>
-  <node pkg="ped_state_transformer" type="ped_state_transformer_node" name="ped_state_transformer">
-    <rosparam command="load" file="$(arg ped_state_transformer_settings)"/>
+  <node pkg="local_goal_maker" type="local_goal_maker_node" name="local_goal_maker">
+    <rosparam command="load" file="$(arg local_goal_maker_settings)"/>
     <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
+  </node>
+  <node pkg="pedestrian_state_predictor" type="pedestrian_state_predictor_node" name="pedestrian_state_predictor">
+    <rosparam command="load" file="$(arg pedestrian_state_predictor_settings)"/>
+    <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
+  </node>
+  <node pkg="cost_map_creator" type="cost_map_creator_node" name="cost_map_creator">
+    <rosparam command="load" file="$(arg cost_map_creator_settings)"/>
+  </node>
+  <node pkg="target_path_planner" type="target_path_planner_node" name="target_path_planner" output="screen">
+    <rosparam command="load" file="$(arg target_path_planner_settings)"/>
+  </node>
+  <node pkg="ped_state_transformer" type="ped_state_transformer_node" name="ped_state_transformer">
+   <rosparam command="load" file="$(arg ped_state_transformer_settings)"/>
+   <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
   </node>
   <node pkg="spaciss_obs_map_creator" type="spaciss_obs_map_creator_node" name="spaciss_obs_map_creator">
-    <rosparam command="load" file="$(arg spaciss_obs_map_creator_settings)"/>
-    <remap from="/raw_obs_map" to="/local_map"/>
+   <rosparam command="load" file="$(arg spaciss_obs_map_creator_settings)"/>
+   <remap from="/raw_obs_map" to="/local_map"/>
   </node>
-  <!-- <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
-    <rosparam command="load" file="$(arg dual_pure_pursuit_planner_settings)"/>
-    <remap from="/predicted_path" to="/global_path"/>
-    <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
-  </node> -->
 
   <!-- rviz -->
   <node pkg="rviz" type="rviz" name="planner_rviz" args="-d $(arg rviz_settings)"/>
-
+  
   <!-- =============== Move ccv =============== -->
   <!-- config file path -->
-  <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/dual_pure_pursuit_planner_debug.yaml"/>
+  <!-- <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/cocobot.yaml"/> -->
 
   <!-- node launch -->
-  <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
-    <rosparam command="load" file="$(arg dual_pure_pursuit_planner_settings)"/>
-    <remap from="/predicted_path" to="/global_path"/>
-    <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
-    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
-  </node>
+  <!-- <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
+   <rosparam command="load" file="$(arg dual_pure_pursuit_planner_settings)"/>
+   <remap from="/predicted_path" to="/target_path"/>
+   <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
+   <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
+  </node> -->
 
-  <!-- <node name="pure_pursuit_steering" pkg="ccv_pure_pursuit_steering" type="ccv_pure_pursuit_steering">
+  <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
     <param name="max_target_velocity" value="1.2"/>
     <param name="max_steering_angle" value="20.0"/>
-    <param name="hz" value="50"/>
+    <param name="hz" value="30"/>
     <param name="L1" value="1.0"/>
     <param name="L2" value="0.5"/>
     <param name="goal_border" value="0.5"/>
     <param name="read_marker" value="false"/>
     <param name="world_frame_id" value="odom"/>
     <param name="robot_frame_id" value="base_footprint"/>
-    <remap from="/predicted_path" to="/global_path"/>
-    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/> 
+    <remap from="/predicted_path" to="/target_path"/>
+    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
+  </node>
+
+  <!-- <node name="pure_pursuit_steering" pkg="ccv_pure_pursuit_steering" type="ccv_pure_pursuit_steering">
+    <param name="max_target_velocity" value="1.2"/>
+    <param name="max_steering_angle" value="20.0"/>
+    <param name="hz" value="30"/>
+    <param name="L1" value="1.0"/>
+    <param name="L2" value="0.5"/>
+    <param name="goal_border" value="0.5"/>
+    <param name="read_marker" value="false"/>
+    <param name="world_frame_id" value="odom"/>
+    <param name="robot_frame_id" value="base_footprint"/>
+    <remap from="/predicted_path" to="/target_path"/>
+    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
   </node> -->
 
   <node name="steering_angle_publisher" pkg="ccv_pure_pursuit_steering" type="steering_angle_publisher"/>
+
+  <node pkg="rviz" type="rviz" name="ccv_rviz" args="-d $(find dual_pure_pursuit_planner)/config/rviz/cocobot.rviz"/>
   
   <!-- =============== Simulator =============== -->
+  <!-- 歩行者50人 -->
   <!-- param -->
   <arg name="kbd_teleop" default="false"/>
   <arg name="rqt_teleop" default="false"/>
@@ -72,13 +101,13 @@
   <arg name="pose_initial_x" default="0.0"/>
   <arg name="pose_initial_y" default="0.0"/>
   <arg name="pose_initial_theta" default="0.0"/>
-  <arg name="max_robot_speed" default="2.5"/>
+  <arg name="max_robot_speed" default="1.2"/>
 
   <!-- launch -->
   <include file="$(find pedsim_simulator)/launch/simulator.launch">
     <arg name="kbd_teleop" value="$(arg kbd_teleop)"/>
     <arg name="rqt_teleop" value="$(arg rqt_teleop)"/>
-    <arg name="scene_file" value="$(find experimental_package)scenarios/empty_area/empty_area50.xml"/>
+    <arg name="scene_file" value="$(find experimental_package)scenarios/empty_area/wide_empty_area50.xml"/>
     <arg name="with_robot" value="$(arg with_robot)"/>
     <arg name="robot_description" value="$(arg robot_description)"/>
     <arg name="simulation_factor" value="$(arg simulation_factor)"/>
@@ -114,9 +143,9 @@
   <!-- rviz -->
   <node pkg="rviz" type="rviz" name="sim_rviz" args="-d $(find pedsim_simulator)/rviz/with_ccv$(arg ns).rviz" if="$(arg visualize)"/>
 
-   <!-- =============== data_matomerun =============== -->
+  <!-- =============== data_matomerun =============== -->
   <!-- config file path -->
-  <arg name="human_dist_calculator_settings" default="$(find robomech2024)/config/param/st50_hdc.yaml"/>
+  <arg name="human_dist_calculator_settings" default="$(find robomech2024)/config/param/coco50_hdc.yaml"/>
 
   <!-- node launch -->
   <node pkg="human_dist_calculator" type="human_dist_calculator_node" name="human_dist_calculator" output="screen">
