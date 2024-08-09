@@ -19,7 +19,8 @@ DualPurePursuitPlanner::DualPurePursuitPlanner():private_nh_("~")
 
 
   //subscriber
-  sub_path_ = nh_.subscribe("/predicted_path", 10, &DualPurePursuitPlanner::predicted_trajectory_callback, this, ros::TransportHints().tcpNoDelay());
+  sub_predicted_path_ = nh_.subscribe("/predicted_path", 10, &DualPurePursuitPlanner::predicted_trajectory_callback, this, ros::TransportHints().tcpNoDelay());
+  sub_robot_odom_ = nh_.subscribe("/robot_odom", 1, &DualPurePursuitPlanner::robot_odom_callback, this, ros::TransportHints().reliable().tcpNoDelay());
 
   //publisher
   pub_cmd_vel_ = nh_.advertise<geometry_msgs::Twist>("/local/cmd_vel", 1);
@@ -33,32 +34,46 @@ DualPurePursuitPlanner::DualPurePursuitPlanner():private_nh_("~")
 // target_pathのコールバック関数
 void DualPurePursuitPlanner::predicted_trajectory_callback(const nav_msgs::Path::ConstPtr &msg)
 {
-  flag_predicted_path_ = true;
   predicted_path_=*msg;
+  flag_predicted_path_ = true;
 
   geometry_msgs::TransformStamped tf;
 
-  //Change the coordinate system of predicted_trajectory to odom
   try
   {
     tf = tf_buffer_.lookupTransform(world_frame_id_, robot_frame_id_, ros::Time(0));
+
+    // 目標軌跡をロボット座標系に変換
     for(auto &pose : predicted_path_.poses)
     {
       pose.pose.position.x -= tf.transform.translation.x;
       pose.pose.position.y -= tf.transform.translation.y;
     }
+
+    // 現在のロボットの姿勢を取得
     current_pose_.x = tf.transform.translation.x;
     current_pose_.y = tf.transform.translation.y;
     current_pose_.theta = std::asin(tf.transform.rotation.z)*2.0;
+
+    flag_frame_change_ = true;
   }
   catch(tf2::TransformException& ex)
   {
     ROS_WARN("%s",ex.what());
     ros::Duration(1.0).sleep();
+    flag_frame_change_ = false;
     return;
   }
 }
 
+// ロボットのodomのコールバック関数
+void DualPurePursuitPlanner::robot_odom_callback(const nav_msgs::Odometry::ConstPtr& msg)
+{
+  robot_odom_ = *msg;
+  flag_robot_odom_ = true;
+}
+
+// 距離を計算
 double DualPurePursuitPlanner::calc_dist(const double &x1, const double &y1, const double &x2, const double &y2)
 {
   return sqrt((x1-x2)*(x1-x2)+(y1-y2)*(y1-y2));
@@ -73,28 +88,14 @@ void DualPurePursuitPlanner::update_carrots()
   for(auto p=predicted_path_.poses.begin(); p!=predicted_path_.poses.end(); ++p)
   {
     distances.push_back(calc_dist(p->pose.position.x, p->pose.position.y, 0.0, 0.0));
-    if(distances.back()<np)
-    {
-      // np=distances.back();
-      // np_it=p;
-    }
   }
 
   double npr=np;
   auto npr_it=predicted_path_.poses.end();
   double r_max=1.5, r_resolution=0.1;
-  cx_line_.poses.clear();
+
   for(double r=r_max; r>0; r-=r_resolution)
   {
-    geometry_msgs::PoseStamped pose;
-    pose.header.frame_id=world_frame_id_;
-    pose.pose.position.x = -r*sin(current_pose_.theta);
-    pose.pose.position.y = r*cos(current_pose_.theta);
-    cx_line_.poses.push_back(pose);
-    pose.pose.position.x *= -1;
-    pose.pose.position.y *= -1;
-    cx_line_.poses.insert(cx_line_.poses.begin(),pose);
-
     for(auto p=predicted_path_.poses.begin(); p!=predicted_path_.poses.end(); ++p)
     {
       double distance = calc_dist(r*sin(-current_pose_.theta), r*cos(-current_pose_.theta), p->pose.position.x, p->pose.position.y);
@@ -116,8 +117,6 @@ void DualPurePursuitPlanner::update_carrots()
     np = npr;
     np_it = npr_it;
   }
-  geometry_msgs::Pose cx = np_it->pose;
-
 
   double np1=std::numeric_limits<double>::max();
   double np2=std::numeric_limits<double>::max();
@@ -139,9 +138,6 @@ void DualPurePursuitPlanner::update_carrots()
     }
   }
 
-  // if(calc_dist(0.0, 0.0, predicted_path_.poses.back().pose.position.x, predicted_path_.poses.back().pose.position.y)<goal_tolerance_) have_reached_goal_=true;
-  // else have_reached_goal_=false;
-
   geometry_msgs::TransformStamped tf;
   try
   {
@@ -159,11 +155,13 @@ void DualPurePursuitPlanner::update_carrots()
     carrot2_pose.pose.position.y += tf.transform.translation.y;
     pub_carrot2_.publish(carrot2_pose);
 
+    flag_frame_change_ = true;
   }
   catch(tf2::TransformException& ex)
   {
     ROS_WARN("%s",ex.what());
     ros::Duration(1.0).sleep();
+    flag_frame_change_ = false;
     return;
   }
 }
@@ -239,13 +237,11 @@ void DualPurePursuitPlanner::update_motion()
       if(d_l>max_steer_angle_)
       {
         d_l = max_steer_angle_;
-        // d_r = 0.0;
         d_r = asin((v*sin(delta)-v_l*sin(d_l))/v_r);
       }
       if(d_l<-max_steer_angle_)
       {
         d_l = -max_steer_angle_;
-        // d_r = 0.0;
         d_r = asin((v*sin(delta)-v_l*sin(d_l))/v_r);
       }
     }

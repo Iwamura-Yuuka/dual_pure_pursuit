@@ -2,16 +2,17 @@
 #define DUAL_PURE_PURSUIT_PLANNER_H
 
 #include<ros/ros.h>
-#include<ccv_dynamixel_msgs/CmdPoseByRadian.h>
-#include<nav_msgs/Path.h> // Express velocity in terms of linear and angular components , Vector3
-#include<geometry_msgs/Twist.h>
-#include<dynamixel_workbench_msgs/DynamixelStateList.h> // "dynamixel_state" is list type
+#include<nav_msgs/Path.h>
+#include<nav_msgs/Odometry.h>
+#include<geometry_msgs/Twist.h> 
 #include<geometry_msgs/PoseStamped.h>
-#include<visualization_msgs/Marker.h>
 #include<tf2_ros/transform_listener.h>
 #include <tf2/utils.h>
 #include<geometry_msgs/TransformStamped.h>
 #include<geometry_msgs/Pose2D.h>
+
+#include<ccv_dynamixel_msgs/CmdPoseByRadian.h>
+#include<dynamixel_workbench_msgs/DynamixelStateList.h>
 
 class DualPurePursuitPlanner
 {
@@ -22,6 +23,7 @@ public:
 private:
   // コールバック関数
   void predicted_trajectory_callback(const nav_msgs::Path::ConstPtr &msg);
+  void robot_odom_callback(const nav_msgs::Odometry::ConstPtr& msg);
 
   // 引数なし関数
   bool is_goal();                                                                           // goalに着くまでfalseを返す
@@ -48,32 +50,34 @@ private:
 
   // msgの受け取り判定用
   bool flag_predicted_path_ = false;
+  bool flag_robot_odom_ = false;
+
+  // 座標変換の判定用
+  bool flag_frame_change_ = false;
   
 
 
   //member
-  nav_msgs::Path predicted_path_;
   geometry_msgs::Pose carrot1_, carrot2_;
   double carrot_distance_;
   double target_velocity_;
-  bool have_reached_goal_=false;
-  // bool read_marker_;
 
   //NodeHandle
   ros::NodeHandle nh_;
   ros::NodeHandle private_nh_;
 
+
+  //Subscriber
+  ros::Subscriber sub_predicted_path_;
+  ros::Subscriber sub_robot_odom_;
   
-  ros::Subscriber sub_path_;
-  ros::Subscriber sub_local_goal_;
-  ros::Subscriber sub_marker_;
   ros::Publisher pub_cmd_vel_;
   ros::Publisher pub_cmd_pos_;
-  // tf2_ros::Buffer tf_buffer_;
 
   // tf
   tf2_ros::Buffer tf_buffer_;
-  // tf2_ros::TransformListener tf_listener_;
+
+  
   geometry_msgs::Pose2D current_pose_;
   std::string world_frame_id_;
   std::string robot_frame_id_;
@@ -81,8 +85,13 @@ private:
   //debug
   ros::Publisher pub_carrot1_;
   ros::Publisher pub_carrot2_;
-  // ros::Publisher pub_cx_line_;
   nav_msgs::Path cx_line_;
+
+  // 各種オブジェクト
+  nav_msgs::Path predicted_path_;            // 目標軌跡
+  nav_msgs::Odometry robot_odom_;         // ロボットの位置情報
+
+
 };
 
 #endif  // DUAL_PURE_PURSUIT_PLANNER_H 
