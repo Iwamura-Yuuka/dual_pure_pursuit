@@ -43,43 +43,15 @@
   
   <!-- =============== Move ccv =============== -->
   <!-- config file path -->
-  <!-- <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/cocobot.yaml"/> -->
+  <arg name="dual_pure_pursuit_planner_settings" default="$(find dual_pure_pursuit_planner)/config/param/cocobot.yaml"/>
 
   <!-- node launch -->
-  <!-- <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
+  <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
    <rosparam command="load" file="$(arg dual_pure_pursuit_planner_settings)"/>
    <remap from="/predicted_path" to="/target_path"/>
    <remap from="/robot_odom" to="/sq2_ccv/diff_drive_steering_controller/odom"/>
    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
-  </node> -->
-
-  <node pkg="dual_pure_pursuit_planner" type="dual_pure_pursuit_planner_node" name="dual_pure_pursuit_planner" output="screen">
-    <param name="max_target_velocity" value="1.2"/>
-    <param name="max_steering_angle" value="20.0"/>
-    <param name="hz" value="30"/>
-    <param name="L1" value="1.0"/>
-    <param name="L2" value="0.5"/>
-    <param name="goal_border" value="0.5"/>
-    <param name="read_marker" value="false"/>
-    <param name="world_frame_id" value="odom"/>
-    <param name="robot_frame_id" value="base_footprint"/>
-    <remap from="/predicted_path" to="/target_path"/>
-    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
   </node>
-
-  <!-- <node name="pure_pursuit_steering" pkg="ccv_pure_pursuit_steering" type="ccv_pure_pursuit_steering">
-    <param name="max_target_velocity" value="1.2"/>
-    <param name="max_steering_angle" value="20.0"/>
-    <param name="hz" value="30"/>
-    <param name="L1" value="1.0"/>
-    <param name="L2" value="0.5"/>
-    <param name="goal_border" value="0.5"/>
-    <param name="read_marker" value="false"/>
-    <param name="world_frame_id" value="odom"/>
-    <param name="robot_frame_id" value="base_footprint"/>
-    <remap from="/predicted_path" to="/target_path"/>
-    <remap from="/local/cmd_vel" to="/sq2_ccv/diff_drive_steering_controller/cmd_vel"/>
-  </node> -->
 
   <node name="steering_angle_publisher" pkg="ccv_pure_pursuit_steering" type="steering_angle_publisher"/>
 

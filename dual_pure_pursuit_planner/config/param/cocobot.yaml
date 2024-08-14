@@ -1,12 +1,5 @@
 # local_cocobot用
 
-# デバック用の情報を可視化するかの設定用
-# trueなら可視化
-visualize_for_debug: true
-
-# global_pathをtarget_pathとするときはtrue
-use_global_path: false
-
 # 制御周波数[Hz]
 hz: 30              # ループ周波数 [Hz]
 
