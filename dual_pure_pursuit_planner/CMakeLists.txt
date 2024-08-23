@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   tf2
 
+  pedestrian_msgs
   ccv_dynamixel_msgs
   dynamixel_workbench_msgs
 )

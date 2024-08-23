@@ -2,49 +2,69 @@
 
 DualPurePursuitPlanner::DualPurePursuitPlanner():private_nh_("~")
 {
-  // param
-  private_nh_.param("visualize_for_debug", visualize_for_debug_, {false});
-  private_nh_.param("use_global_path", use_global_path_, {false});
-  private_nh_.param("hz", hz_, {10});
-  private_nh_.param("max_target_velocity", max_target_velocity_, {1.2});  // CCV's maximum speed is 3.0[m/s]
-  private_nh_.param("max_steer_angle", max_steer_angle_, {20.0});         // Specification is 20[deg]
-  max_steer_angle_ *= M_PI / 180.0;                                       // Convert to [rad]
-  private_nh_.param("tread", tread_, {0.5});                              // Specification is 0.5[m]
+  //param
+  private_nh_.param("hz", hz_, {30});
   private_nh_.param("dist_to_carrot1", dist_to_carrot1_, {1.0});
   private_nh_.param("dist_to_carrot2", dist_to_carrot2_, {0.5});
-  private_nh_.param("goal_tolerance", goal_tolerance_, {0.5});
-  private_nh_.param("world_frame", world_frame_, {"odom"});
-  private_nh_.param("robot_frame", robot_frame_, {"base_footprint"});
-  private_nh_.param("tmp_carrot1_index", tmp_carrot1_index_, {0});
-  private_nh_.param("tmp_carrot2_index", tmp_carrot2_index_, {0});
-  private_nh_.param("max_yawrate", max_yawrate_, {4.5});
+  private_nh_.param("max_target_velocity", max_target_velocity_, {1.2});  // CCV's maximum speed is 3.0 [m/s]
+  private_nh_.param("max_yawrate", max_yawrate_, {4.5});                  // CCV's maximum yawrate is 4.5 [rad/s]
+  private_nh_.param("max_steer_angle", max_steer_angle_, {20.0});         // Specification is 20 [deg]
+  max_steer_angle_ *= M_PI/180;                                           // Convert to radian
+  private_nh_.param("pitch_offset", pitch_offset_, {3.0*M_PI/180.0});
+  private_nh_.param("tread", tread_, {0.48});                             // Specification is 0.5 [m]
+  private_nh_.param("goal_tolerance", goal_tolerance_, {0.3});
   private_nh_.param("vel_reso", vel_reso_, {0.1});
   private_nh_.param("dt", dt_, {0.1});
   private_nh_.param("predict_time", predict_time_, {1.0});
+  private_nh_.param("margin", margin_, {0.5});
+  private_nh_.param("world_frame_id", world_frame_id_, {"odom"});
+  private_nh_.param("robot_frame_id", robot_frame_id_, {"base_link"});
 
-  // subscriber
-  sub_target_path_ = nh_.subscribe("/predicted_path", 10, &DualPurePursuitPlanner::target_path_callback, this, ros::TransportHints().reliable().tcpNoDelay());
+  //subscriber
+  sub_predicted_path_ = nh_.subscribe("/predicted_path", 10, &DualPurePursuitPlanner::predicted_trajectory_callback, this, ros::TransportHints().tcpNoDelay());
   sub_robot_odom_ = nh_.subscribe("/robot_odom", 1, &DualPurePursuitPlanner::robot_odom_callback, this, ros::TransportHints().reliable().tcpNoDelay());
-  sub_local_map_ = nh_.subscribe("/local_map", 10, &DualPurePursuitPlanner::local_map_callback, this, ros::TransportHints().reliable().tcpNoDelay());
+  sub_people_states_ = nh_.subscribe("/transformed_people_states", 1, &DualPurePursuitPlanner::people_states_callback, this, ros::TransportHints().reliable().tcpNoDelay());
 
-  // publisher
-  pub_cmd_vel_=nh_.advertise<geometry_msgs::Twist>("/local/cmd_vel", 1);
-  pub_cmd_pos_=nh_.advertise<ccv_dynamixel_msgs::CmdPoseByRadian>("/local/cmd_pos", 1);
+  //publisher
+  pub_cmd_vel_ = nh_.advertise<geometry_msgs::Twist>("/local/cmd_vel", 1);
+  pub_cmd_pos_ = nh_.advertise<ccv_dynamixel_msgs::CmdPoseByRadian>("/local/cmd_pos", 1);
 
-  // debug
-  if(visualize_for_debug_)
-  {
-    pub_carrot1_ = nh_.advertise<geometry_msgs::PointStamped>("/carrot11", 1);
-    pub_carrot2_ = nh_.advertise<geometry_msgs::PointStamped>("/carrot22", 1);
-    pub_optimal_path_ = nh_.advertise<nav_msgs::Path>("/optimal_local_path", 1);
-  }
+  //debug
+  pub_carrot1_ = nh_.advertise<geometry_msgs::PoseStamped>("/carrot1", 1);
+  pub_carrot2_ = nh_.advertise<geometry_msgs::PoseStamped>("/carrot2", 1);
+  pub_optimal_path_ = nh_.advertise<nav_msgs::Path>("/optimal_local_path", 1);
 }
 
 // target_pathのコールバック関数
-void DualPurePursuitPlanner::target_path_callback(const nav_msgs::Path::ConstPtr& msg)
+void DualPurePursuitPlanner::predicted_trajectory_callback(const nav_msgs::Path::ConstPtr &msg)
 {
-  target_path_ = *msg;
-  flag_target_path_ = true;
+  predicted_path_=*msg;
+  flag_predicted_path_ = true;
+
+  geometry_msgs::TransformStamped tf;
+
+  try
+  {
+    tf = tf_buffer_.lookupTransform(world_frame_id_, robot_frame_id_, ros::Time(0));
+
+    // 目標軌跡をロボット座標系に変換
+    for(auto &pose : predicted_path_.poses)
+    {
+      pose.pose.position.x -= tf.transform.translation.x;
+      pose.pose.position.y -= tf.transform.translation.y;
+    }
+
+    // 現在のロボットの姿勢を取得
+    current_pose_.x = tf.transform.translation.x;
+    current_pose_.y = tf.transform.translation.y;
+    current_pose_.theta = std::asin(tf.transform.rotation.z)*2.0;
+  }
+  catch(tf2::TransformException& ex)
+  {
+    ROS_WARN("%s",ex.what());
+    ros::Duration(1.0).sleep();
+    return;
+  }
 }
 
 // ロボットのodomのコールバック関数
@@ -54,144 +74,123 @@ void DualPurePursuitPlanner::robot_odom_callback(const nav_msgs::Odometry::Const
   flag_robot_odom_ = true;
 }
 
-// local_mapのコールバック関数
-void DualPurePursuitPlanner::local_map_callback(const nav_msgs::OccupancyGrid::ConstPtr& msg)
+// 歩行者情報のコールバック関数
+void DualPurePursuitPlanner::people_states_callback(const pedestrian_msgs::PeopleStatesConstPtr& msg)
 {
-  local_map_ = *msg;
-  flag_local_map_ = true;
+  while(people_states_.size() > 0)
+  {
+    // people_states_の配列のうち取得済みのデータ（配列の先頭の要素）を削除
+    // これをしないと，front() でデータを取得する際，同じデータしか取得できない
+    people_states_.pop();
+  }
+
+  people_states_.emplace(msg);
+  flag_people_states_ = true;
 }
 
 // 距離を計算
-double DualPurePursuitPlanner::calc_dist(const double x1, const double y1, const double x2, const double y2)
+double DualPurePursuitPlanner::calc_dist(const double &x1, const double &y1, const double &x2, const double &y2)
 {
-  const double dx = x1 - x2;
-  const double dy = y1 - y2;
-
-  return hypot(dx, dy);
-}
-
-// ターゲットのキャロットの位置を計算
-void DualPurePursuitPlanner::calc_carrot(geometry_msgs::PointStamped& carrot, const double dist_to_carrot)
-{
-  int target_path_index = 0;  // target_pathのインデックス
-
-  // global_pathをtarget_pathとするときは，tmp_carrot_indexを使ってtarget_path_indexを初期化
-  if(use_global_path_)
-  {
-    if(dist_to_carrot == dist_to_carrot1_)  // carrot1
-    {
-      target_path_index = tmp_carrot1_index_;
-    }
-    else if(dist_to_carrot == dist_to_carrot2_)  // carrot2
-    {
-      target_path_index = tmp_carrot2_index_;
-    }
-  }
-
-  // 距離を計算
-  double dist = calc_dist(target_path_.poses[target_path_index].pose.position.x, target_path_.poses[target_path_index].pose.position.y, robot_odom_.pose.pose.position.x, robot_odom_.pose.pose.position.y);
-  double min_error = std::fabs(dist - dist_to_carrot);
-
-  while(target_path_index < target_path_.poses.size())
-  {
-    // パスのインデックスを進める
-    target_path_index++;
-
-    // 距離を計算
-    dist = calc_dist(target_path_.poses[target_path_index].pose.position.x, target_path_.poses[target_path_index].pose.position.y, robot_odom_.pose.pose.position.x, robot_odom_.pose.pose.position.y);
-    const double error = std::fabs(dist - dist_to_carrot);
-
-    // 最小誤差を更新
-    if(error < min_error)
-    {
-      min_error = error;
-    }
-    else
-    {
-      // 1つ前のインデックスをキャロットとして返す
-      target_path_index--;
-      break;
-    }
-
-    // target_path_indexがtarget_path_.posesの配列の最後に到達した場合，carrotとしてtarget_path_.posesの最後の要素を返す
-    if(target_path_index == target_path_.poses.size()-1)
-    {
-      break;
-    }
-  }
-
-  // carrotの更新
-  carrot.point.x = target_path_.poses[target_path_index].pose.position.x;
-  carrot.point.y = target_path_.poses[target_path_index].pose.position.y;
-  carrot.point.z = 0.0;
-
-  // tmp_carrot_indexの更新
-  if(dist_to_carrot == dist_to_carrot1_)  // carrot1
-  {
-    tmp_carrot1_index_ = target_path_index;
-  }
-  else if(dist_to_carrot == dist_to_carrot2_)  // carrot2
-  {
-    tmp_carrot2_index_ = target_path_index;
-  }
-}
-
-// キャロットをodom座標系からbase_footprint座標系に変換
-void DualPurePursuitPlanner::transform_carrot(geometry_msgs::PointStamped& carrot)
-{
-  geometry_msgs::TransformStamped transform;
-
-  try
-  {
-    transform = tf_buffer_.lookupTransform(robot_frame_, world_frame_, ros::Time(0));
-    flag_frame_change_ = true;
-  }
-  catch(tf2::TransformException& ex)
-  {
-    ROS_WARN("%s", ex.what());
-    flag_frame_change_ = false;
-    return;
-  }
-
-  geometry_msgs::PointStamped after_carrot;
-  tf2::doTransform(carrot, after_carrot, transform);
-
-  carrot = after_carrot;
+  return sqrt((x1-x2)*(x1-x2)+(y1-y2)*(y1-y2));
 }
 
 // ターゲットのキャロットを更新
-void DualPurePursuitPlanner::update_carrots(ros::Time now)
+void DualPurePursuitPlanner::update_carrots()
 {
-  carrot1_.header.stamp = now;
-  carrot1_.header.frame_id = world_frame_;
-  carrot2_.header.stamp = now;
-  carrot2_.header.frame_id = world_frame_;
+  double np = std::numeric_limits<double>::max();
+  auto np_it = predicted_path_.poses.end();
 
-  // キャロットを更新
-  calc_carrot(carrot1_, dist_to_carrot1_);  // carrot1
-  calc_carrot(carrot2_, dist_to_carrot2_);  // carrot2
-
-  // キャロットをodom座標系からbase_footprint座標系に変換
-  transform_carrot(carrot1_);  // carrot1
-  transform_carrot(carrot2_);  // carrot2
-
-  // キャロットを可視化
-  if((visualize_for_debug_) && (flag_frame_change_))
+  std::vector<double> distances;
+  for(auto p=predicted_path_.poses.begin(); p!=predicted_path_.poses.end(); ++p)
   {
-    pub_carrot1_.publish(carrot1_);
-    pub_carrot2_.publish(carrot2_);
+    distances.push_back(calc_dist(p->pose.position.x, p->pose.position.y, 0.0, 0.0));
+  }
+
+  double npr = np;
+  auto npr_it = predicted_path_.poses.end();
+  double r_max = 1.5, r_resolution = 0.1;
+
+  for(double r=r_max; r>0; r-=r_resolution)
+  {
+    for(auto p=predicted_path_.poses.begin(); p!=predicted_path_.poses.end(); ++p)
+    {
+      double distance = calc_dist(r*sin(-current_pose_.theta), r*cos(-current_pose_.theta), p->pose.position.x, p->pose.position.y);
+      if(distance < npr)
+      {
+        npr = distance;
+        npr_it = p;
+      }
+      distance = calc_dist(-r*sin(-current_pose_.theta), -r*cos(-current_pose_.theta), p->pose.position.x, p->pose.position.y);
+      if(distance < npr)
+      {
+        npr = distance;
+        npr_it = p;
+      }
+    }
+  }
+  if(np_it != npr_it)
+  {
+    np = npr;
+    np_it = npr_it;
+  }
+
+  double np1 = std::numeric_limits<double>::max();
+  double np2 = std::numeric_limits<double>::max();
+
+  for(auto p=np_it; p!=predicted_path_.poses.end(); ++p)
+  {
+    double distance = fabs(distances[p-predicted_path_.poses.begin()] - dist_to_carrot1_);
+    if(distance < np1)
+    {
+      carrot1_ = p->pose;
+      np1 = distance;
+      carrot_distance_ = distances[p-predicted_path_.poses.begin()];
+    }
+    distance = fabs(distances[p-predicted_path_.poses.begin()]-dist_to_carrot2_);
+    if(distance < np2)
+    {
+      carrot2_ = p->pose;
+      np2 = distance;
+    }
+  }
+
+  // キャロットをworld座標系に変換
+  geometry_msgs::TransformStamped tf;
+  try
+  {
+    tf = tf_buffer_.lookupTransform(world_frame_id_, robot_frame_id_, ros::Time(0));
+
+    geometry_msgs::PoseStamped carrot1_pose;
+    carrot1_pose.header.frame_id = world_frame_id_;
+    carrot1_pose.pose = carrot1_;
+    carrot1_pose.pose.position.x += tf.transform.translation.x;
+    carrot1_pose.pose.position.y += tf.transform.translation.y;
+    pub_carrot1_.publish(carrot1_pose);
+
+    geometry_msgs::PoseStamped carrot2_pose;
+    carrot2_pose.header.frame_id = world_frame_id_;
+    carrot2_pose.pose = carrot2_;
+    carrot2_pose.pose.position.x += tf.transform.translation.x;
+    carrot2_pose.pose.position.y += tf.transform.translation.y;
+    pub_carrot2_.publish(carrot2_pose);
+  }
+  catch(tf2::TransformException& ex)
+  {
+    ROS_WARN("%s",ex.what());
+    ros::Duration(1.0).sleep();
+    return;
   }
 }
 
-// goalに着くまでtrueを返す
+// goalに着くまでfalseを返す
 bool DualPurePursuitPlanner::is_goal()
 {
-  const double dist = calc_dist(carrot1_.point.x, carrot1_.point.y, 0.0, 0.0);
+  const double dist = calc_dist(predicted_path_.poses.back().pose.position.x, predicted_path_.poses.back().pose.position.y, 0.0, 0.0);
 
   if(dist > goal_tolerance_)
-    return true;
-  else
     return false;
+  else
+    return true;
 }
 
 // 適切な角度(-M_PI~M_PI)に変換
@@ -243,27 +242,22 @@ double DualPurePursuitPlanner::calc_evaluation(const std::vector<State>& traject
   return total_score;
 }
 
-// 座標からグリッドのインデックスを返す
-int DualPurePursuitPlanner::xy_to_grid_index(const double x, const double y)
-{
-  const int index_x = int(floor((x - local_map_.info.origin.position.x) / local_map_.info.resolution));
-  const int index_y = int(floor((y - local_map_.info.origin.position.y) / local_map_.info.resolution));
-
-  return index_x + (index_y * local_map_.info.width);
-}
-
 // obsの評価関数を計算（障害物に衝突するか）
 double DualPurePursuitPlanner::calc_obs_score(const std::vector<State>& trajectory)
 {
+  const auto people = people_states_.front();
+
   // 軌跡上に障害物がないか探索
   for(const auto& state : trajectory)
   {
-    const int grid_index = xy_to_grid_index(state.x, state.y);
-
-    // 衝突したパスにはマイナス値を返す
-    if(local_map_.data[grid_index] == 100)
+    for(const auto& person : people->people_states)
     {
-      return -1e6;
+      // pathのうちの１点と障害物の距離を計算
+      const double dist = calc_dist(person.pose.position.x, person.pose.position.y, state.x, state.y);
+      
+      // 障害物に衝突したパスを評価
+      if(dist <= margin_)
+        return -1e6;
     }
   }
 
@@ -279,204 +273,178 @@ double DualPurePursuitPlanner::calc_vel_score(const std::vector<State>& trajecto
 }
 
 // ステア角を計算
-double DualPurePursuitPlanner::calc_steering_angle(const double r, const double delta, const double d, const char side)
+double DualPurePursuitPlanner::calc_steering_angle(double r, double delta, double a, char side)
 {
-  double delta_inside = 0.0;
-  double delta_outside = 0.0;
-
-  if(side == 'i')
-    return atan2(r*sin(delta), r*cos(delta)-d);
-  else if(side == 'o')
-    return atan2(r*sin(delta), r*cos(delta)+d);
-  else
-    return 0.0;
+  if(side == 'i') return std::atan2(r*sin(delta), r*cos(delta)-a);
+  if(side == 'o') return std::atan2(r*sin(delta), r*cos(delta)+a);
+  return 0;
 }
 
-// ステア角の最大値に基づき修正
-double DualPurePursuitPlanner::fix_steer_angle(const double r, const double delta_inside, const double d, int sign)
+// ステア角に基づいて速度を調整
+void DualPurePursuitPlanner::flip_velocity(double &delta, double &velocity)
 {
-  double delta = 0.0;
-  double min_error = 1e6;
-
-  if(sign == 1)  // delta_inside > max_steer_angle_のとき
-  {
-    for(double angle=0.0; angle<=max_steer_angle_; angle+=0.01)
-    {
-      double d_i = calc_steering_angle(r, angle, d, 'i');
-      double error = std::fabs(delta_inside - d_i);
-
-      if(error < min_error)
-      {
-        min_error = error;
-        delta = angle;
-      }
-    }
-  }
-  else if(sign == -1)  // delta_inside < -max_steer_angle_のとき
-  {
-    for(double angle=0.0; angle>=-max_steer_angle_; angle-=0.01)
-    {
-      double d_i = calc_steering_angle(r, angle, d, 'i');
-      double error = std::fabs(delta_inside - d_i);
-
-      if(error < min_error)
-      {
-        min_error = error;
-        delta = angle;
-      }
-    }
-  }
-
-  return delta;
+  if(delta>0.0) delta -= M_PI;
+  else delta += M_PI;
+  velocity *= -1;
 }
 
 // 制御入力を計算
-void DualPurePursuitPlanner::update_motion(ros::Time now)
+void DualPurePursuitPlanner::update_motion()
 {
-  if(is_goal())
+  // carrotに対する方位誤差を計算
+  double alpha = std::atan2(carrot1_.position.y, carrot1_.position.x) - current_pose_.theta;
+  double delta = std::atan2(carrot2_.position.y, carrot2_.position.x) - current_pose_.theta;
+  delta = std::max(-max_steer_angle_, std::min(max_steer_angle_, delta));
+
+  const double a = tread_ / 2.0;  // トレッドの半分の長さ
+  const double l1 = calc_dist(carrot1_.position.x, carrot1_.position.y , 0.0, 0.0);
+  double r = fabs(l1 / alpha);
+
+  double v = 0.0;  // 並進速度
+  double w = 0.0;  // 旋回速度
+  std::vector<std::vector<State>> trajectories; // すべての軌跡格納用
+  double max_score = -1e6;                      // 評価値の最大値格納用
+  int index_of_max_score = 0;                   // 評価値の最大値に対する軌跡のインデックス格納用
+  
+  // 並進速度と旋回速度のすべての組み合わせを評価
+  int i = 0; // 現在の軌跡のインデックス保持用
+  for(double velocity=0.0; velocity<=max_target_velocity_; velocity+=vel_reso_)
   {
-    // carrotに対する方位誤差を計算
-    double alpha = atan2(carrot1_.point.y, carrot1_.point.x);
-    double delta = atan2(carrot2_.point.y, carrot2_.point.x);
+    // 旋回速度を計算
+    double yawrate = velocity * alpha / l1;
 
-    // ステア角の最大値に基づきdeltaを修正
-    if(delta > max_steer_angle_)
+    if(yawrate > max_yawrate_)
     {
-      delta = max_steer_angle_;
+      yawrate = max_yawrate_;
     }
-    else if(delta < -max_steer_angle_)
+    else if(yawrate < -max_yawrate_)
     {
-      delta = -max_steer_angle_;
+      yawrate = -max_yawrate_;
     }
 
-    const double d = tread_ / 2.0;  // トレッドの半分の長さ
+    const std::vector<State> trajectory = calc_trajectory(velocity, yawrate, delta);  // 予測軌跡の作成
+    const double score = calc_evaluation(trajectory);                                 // 予測軌跡に対する評価値の計算
+    trajectories.push_back(trajectory);
 
-    // キャロットまでの距離を計算
-    const double l1 = calc_dist(carrot1_.point.x, carrot1_.point.y, robot_odom_.pose.pose.position.x, robot_odom_.pose.pose.position.y);
-
-    std::vector<double> input{0.0, 0.0};          // {velocity, yawrate}
-    std::vector<std::vector<State>> trajectories; // すべての軌跡格納用
-    double max_score = -1e6;                      // 評価値の最大値格納用
-    int index_of_max_score = 0;                   // 評価値の最大値に対する軌跡のインデックス格納用
-
-    // 並進速度と旋回速度のすべての組み合わせを評価
-    int i = 0; // 現在の軌跡のインデックス保持用
-    for(double velocity=0.0; velocity<=max_target_velocity_; velocity+=vel_reso_)
+    // 最大値の更新
+    if(max_score < score)
     {
-      // 旋回速度を計算
-      double yawrate = 2.0 * velocity * sin(alpha) / l1;
-
-      if(yawrate > max_yawrate_)
-      {
-        yawrate = max_yawrate_;
-      }
-      else if(yawrate < -max_yawrate_)
-      {
-        yawrate = -max_yawrate_;
-      }
-
-      const std::vector<State> trajectory = calc_trajectory(velocity, yawrate, delta);  // 予測軌跡の作成
-      const double score = calc_evaluation(trajectory);                                 // 予測軌跡に対する評価値の計算
-      trajectories.push_back(trajectory);
-
-      // 最大値の更新
-      if(max_score < score)
-      {
-        max_score = score;
-        input[0]  = velocity;
-        input[1]  = yawrate;
-        index_of_max_score = i;
-      }
-
-      i++;
+      max_score = score;
+      v  = velocity;
+      w  = yawrate;
+      index_of_max_score = i;
     }
 
-    // パスを可視化して適切なパスが選択できているかを評価
-    if(visualize_for_debug_)
-    {
-      for(i=0; i<trajectories.size(); i++)
-      {
-        if(i == index_of_max_score)
-          visualize_trajectory(trajectories[i], now);
-      }
-    }
+    i++;
+  }
 
-    // 並進速度と旋回速度
-    cmd_vel_.linear.x = input[0];
-    cmd_vel_.angular.z = input[1];
+  // パスを可視化して適切なパスが選択できているかを評価
+  for(i=0; i<trajectories.size(); i++)
+  {
+    if(i == index_of_max_score)
+    visualize_trajectory(trajectories[i]);
+  }
 
-    // 回転半径を計算
-    const double r = std::fabs(input[0] / input[1]);
+  double v_r = v + a*w;
+  double v_l = v - a*w;
+  double d_r,d_l;
 
-    // ステア角を計算（内側・外側）
-    double delta_inside = calc_steering_angle(r, delta, d, 'i');
-    double delta_outside = calc_steering_angle(r, delta, d, 'o');
-
-    // ステア角の最大値に基づきdeltaを修正
-    if(delta_inside > max_steer_angle_)
-    {
-      delta_inside = max_steer_angle_;
-
-      // delta_insideに合わせてdeltaを再計算
-      delta = fix_steer_angle(r, delta_inside, d, 1);
-
-      // delta_outsideを再計算
-      delta_outside = calc_steering_angle(r, delta, d, 'o');
-    }
-    else if(delta_inside < -max_steer_angle_)
-    {
-      delta_inside = -max_steer_angle_;
-
-      // delta_insideに合わせてdeltaを修正
-      delta = fix_steer_angle(r, delta_inside, d, -1);
-
-      // delta_outsideを再計算
-      delta_outside = calc_steering_angle(r, delta, d, 'o');
-    }
-
-    double delta_r = 0.0;
-    double delta_l = 0.0;
-
-    // ステア各を計算（左右）
-    if(input[1] > 0.0)
-    {
-      delta_r = delta_outside;
-      delta_l = delta_inside;
-    }
-    else
-    {
-      delta_r = delta_inside;
-      delta_l = delta_outside;
-    }
-
-    // ステア角
-    cmd_pos_.steer_r = delta_r;
-    cmd_pos_.steer_l = delta_l;
+  // ステア角を調整
+  double eps = 0.1/180*M_PI;
+  if(fabs(alpha)<eps)
+  {
+    std::cout << "alpha is small" << std::endl;
+    d_l = delta;
+    d_r = delta;
   }
   else
   {
-    ROS_INFO_STREAM("====== goal!! ======");
-    
-    cmd_vel_.linear.x = 0.0;
-    cmd_vel_.angular.z = 0.0;
-    cmd_pos_.steer_r = 0.0;
-    cmd_pos_.steer_l = 0.0;
+    double d_i = calc_steering_angle(r, delta, a, 'i');
+    double d_o = calc_steering_angle(r, delta, a, 'o');
+    double v_i = 1.0, v_o = 1.0;
+    if(fabs(d_i) > M_PI/2.0) flip_velocity(d_i,v_i);
+    if(fabs(d_o) > M_PI/2.0) flip_velocity(d_o,v_o);
+
+    if(w>0.0)
+    {
+      d_l = d_i;
+      d_r = d_o;
+      v_l *= v_i;
+      v_r *= v_o;
+      if(d_l > max_steer_angle_)
+      {
+        d_l = max_steer_angle_;
+        d_r = asin((v*sin(delta) - v_l*sin(d_l)) / v_r);
+      }
+      if(d_l < -max_steer_angle_)
+      {
+        d_l = -max_steer_angle_;
+        d_r = asin((v*sin(delta) - v_l*sin(d_l)) / v_r);
+      }
+    }
+    else
+    {
+      d_l = d_o;
+      d_r = d_i;
+      v_l *= v_o;
+      v_r *= v_i;
+      if(d_r > max_steer_angle_)
+      {
+        d_r = max_steer_angle_;
+        d_l = asin((v*sin(delta) - v_r*sin(d_r)) / v_l);
+      }
+      if(d_r<-max_steer_angle_)
+      {
+        d_r = -max_steer_angle_;
+        d_l = asin((v*sin(delta) - v_r*sin(d_r)) / v_l);
+      }
+    }
+
   }
-  
-  pub_cmd_vel_.publish(cmd_vel_);
-  pub_cmd_pos_.publish(cmd_pos_);
+
+  geometry_msgs::Twist vel;
+  vel.linear.x = (v_r + v_l) / 2.0;
+  vel.angular.z = (v_r - v_l) / (2.0*a);
+
+  // ゴールに到達した場合は停止
+  if(is_goal())
+  {
+    std::cout << "reached goal" << std::endl;
+    vel.linear.x = 0.0;
+    vel.angular.z = 0.0;
+    d_r = 0.0;
+    d_l = 0.0;
+  }
+
+  pub_cmd_vel_.publish(vel);
+
+  ccv_dynamixel_msgs::CmdPoseByRadian cmd_pos;
+  cmd_pos.steer_r = d_r;
+  cmd_pos.steer_l = d_l;
+  cmd_pos.fore = pitch_offset_;
+  cmd_pos.rear = pitch_offset_;
+  cmd_pos.roll = 0.0;
+  pub_cmd_pos_.publish(cmd_pos);
+
+  // 制御入力の表示
+  std::cout << "v: " << (double)vel.linear.x << " w: "<<(double)vel.angular.z << std::endl;
+  std::cout << "alpha: " << alpha/M_PI*180 << " delta: " << delta/M_PI*180 << std::endl;
+  std::cout << "steer_l: " << -cmd_pos.steer_l/M_PI*180 << " steer_r: " << -cmd_pos.steer_r/M_PI*180 << std::endl;
+  std::cout << "current_theta: " << current_pose_.theta << std::endl;
 }
 
 // 軌跡の可視化
-void DualPurePursuitPlanner::visualize_trajectory(std::vector<State>& trajectory, ros::Time now)
+void DualPurePursuitPlanner::visualize_trajectory(std::vector<State>& trajectory)
 {
+  ros::Time now = ros::Time::now();
+
   nav_msgs::Path local_path;
   local_path.header.stamp = now;
-  local_path.header.frame_id = robot_frame_;
+  local_path.header.frame_id = robot_frame_id_;
 
   geometry_msgs::PoseStamped pose;
   pose.header.stamp = now;
-  pose.header.frame_id = robot_frame_;
+  pose.header.frame_id = robot_frame_id_;
 
   // 軌跡を格納
   for(auto& state : trajectory)
@@ -497,49 +465,18 @@ void DualPurePursuitPlanner::process()
 
   while(ros::ok())
   {
-    if((flag_target_path_) && (flag_robot_odom_) && (flag_local_map_))
+    if((flag_predicted_path_) && (flag_robot_odom_) && (flag_people_states_))
     {
-      ros::Time now = ros::Time::now();
-
-      ROS_INFO_STREAM("receive path");
-      // ターゲットのキャロットを更新
-      update_carrots(now);
-
-      // 制御入力を計算
-      update_motion(now);
-    }
-    else
-    {
-      ROS_WARN_STREAM("cannot receive path");
-
-      cmd_vel_.linear.x = 0.0;
-      cmd_vel_.angular.z = 0.0;
-      cmd_pos_.steer_r = 0.0;
-      cmd_pos_.steer_l = 0.0;
-
-      if(!flag_target_path_)
-      {
-        ROS_WARN_STREAM("cannot receive target path");
-      }
-      if(!flag_robot_odom_)
-      {
-        ROS_WARN_STREAM("cannot receive robot odom");
-      }
-      if(!flag_local_map_)
-      {
-        ROS_WARN_STREAM("cannot receive local map");
-      }
-
-      pub_cmd_vel_.publish(cmd_vel_);
-      pub_cmd_pos_.publish(cmd_pos_);
+      // キャロットを更新
+      update_carrots();
+      
+      // 制御入力を更新
+      update_motion();
     }
 
-    // msgの受け取り判定用flagをfalseに戻す
-    flag_target_path_ = false;
-    flag_robot_odom_ = false;
-    // flag_local_map_ = false;
-
+    else ROS_WARN_STREAM("cannot receive path");
     ros::spinOnce();
+    std::cout << "==============================" << std::endl;
     loop_rate.sleep();
   }
 }

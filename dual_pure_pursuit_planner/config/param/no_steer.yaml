@@ -1,0 +1,28 @@
+# ステアなし
+
+# 制御周波数[Hz]
+hz: 30              # ループ周波数 [Hz]
+
+# CCV
+max_target_velocity: 1.2  # 目標並進速度 [m/s]
+max_steer_angle: 0.0       # ステア角の最大値 [deg]
+tread: 0.5                # CCVのトレッド幅 [m]
+
+# carrot
+dist_to_carrot1: 1.0  # carrot1（cmd_vel計算用ターゲット） [m]
+dist_to_carrot2: 0.5  # carrot2（ステア角計算用ターゲット） [m]
+
+# 許容誤差
+goal_tolerance: 0.5  # ゴールに対する許容誤差 [m]
+
+# frame_id
+world_frame: "odom"            # 目標軌道
+robot_frame: "base_footprint"  # ロボット
+
+# 速度
+max_yawrate: 4.5  # 最高旋回速度 [rad/s]
+vel_reso: 0.1  # 並進速度を計算するときの刻み幅 [m/s]
+
+# 予測時間
+dt: 0.1            # 微小時間 [s]
+predict_time: 1.0  # 予測時間 [s]
