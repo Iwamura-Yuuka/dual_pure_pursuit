@@ -115,13 +115,13 @@ void DualPurePursuitPlanner::update_carrots()
     for(auto p=predicted_path_.poses.begin(); p!=predicted_path_.poses.end(); ++p)
     {
       double distance = calc_dist(r*sin(-current_pose_.theta), r*cos(-current_pose_.theta), p->pose.position.x, p->pose.position.y);
-      if(distance<npr)
+      if(distance < npr)
       {
         npr = distance;
         npr_it = p;
       }
       distance = calc_dist(-r*sin(-current_pose_.theta), -r*cos(-current_pose_.theta), p->pose.position.x, p->pose.position.y);
-      if(distance<npr)
+      if(distance < npr)
       {
         npr = distance;
         npr_it = p;
@@ -349,10 +349,11 @@ void DualPurePursuitPlanner::update_motion()
   double v_l = v - a*w;
   double d_r,d_l;
 
+  // ステア角を調整
   double eps = 0.1/180*M_PI;
   if(fabs(alpha)<eps)
   {
-    std::cout<<"alpha is small"<<std::endl;
+    std::cout << "alpha is small" << std::endl;
     d_l = delta;
     d_r = delta;
   }
@@ -370,15 +371,15 @@ void DualPurePursuitPlanner::update_motion()
       d_r = d_o;
       v_l *= v_i;
       v_r *= v_o;
-      if(d_l>max_steer_angle_)
+      if(d_l > max_steer_angle_)
       {
         d_l = max_steer_angle_;
-        d_r = asin((v*sin(delta)-v_l*sin(d_l))/v_r);
+        d_r = asin((v*sin(delta) - v_l*sin(d_l)) / v_r);
       }
-      if(d_l<-max_steer_angle_)
+      if(d_l < -max_steer_angle_)
       {
         d_l = -max_steer_angle_;
-        d_r = asin((v*sin(delta)-v_l*sin(d_l))/v_r);
+        d_r = asin((v*sin(delta) - v_l*sin(d_l)) / v_r);
       }
     }
     else
@@ -387,48 +388,49 @@ void DualPurePursuitPlanner::update_motion()
       d_r = d_i;
       v_l *= v_o;
       v_r *= v_i;
-      if(d_r>max_steer_angle_)
+      if(d_r > max_steer_angle_)
       {
         d_r = max_steer_angle_;
-        d_l = asin((v*sin(delta)-v_r*sin(d_r))/v_l);
+        d_l = asin((v*sin(delta) - v_r*sin(d_r)) / v_l);
       }
       if(d_r<-max_steer_angle_)
       {
         d_r = -max_steer_angle_;
-        d_l = asin((v*sin(delta)-v_r*sin(d_r))/v_l);
+        d_l = asin((v*sin(delta) - v_r*sin(d_r)) / v_l);
       }
     }
 
   }
 
   geometry_msgs::Twist vel;
-  vel.linear.x = (v_r + v_l)/2.0;
-  vel.angular.z = (v_r - v_l)/(2.0*a);
+  vel.linear.x = (v_r + v_l) / 2.0;
+  vel.angular.z = (v_r - v_l) / (2.0*a);
+
+  // ゴールに到達した場合は停止
   if(is_goal())
   {
-    std::cout<<"reached goal"<<std::endl;
+    std::cout << "reached goal" << std::endl;
     vel.linear.x = 0.0;
     vel.angular.z = 0.0;
-    d_r=0.0;
-    d_l=0.0;
+    d_r = 0.0;
+    d_l = 0.0;
   }
 
   pub_cmd_vel_.publish(vel);
-  // std::cout<<"carrot_distance:"<<carrot_distance_<<std::endl;
 
   ccv_dynamixel_msgs::CmdPoseByRadian cmd_pos;
-  cmd_pos.steer_r= d_r;
-  cmd_pos.steer_l= d_l;
-  cmd_pos.fore=pitch_offset_;
-  cmd_pos.rear=pitch_offset_;
-  cmd_pos.roll=0.0;
+  cmd_pos.steer_r = d_r;
+  cmd_pos.steer_l = d_l;
+  cmd_pos.fore = pitch_offset_;
+  cmd_pos.rear = pitch_offset_;
+  cmd_pos.roll = 0.0;
   pub_cmd_pos_.publish(cmd_pos);
-  // printf("carrot1: %.2lf,%.2lf carrot2: %.2lf,%.2lf\n", carrot1_.position.x, carrot1_.position.y, carrot2_.position.x, carrot2_.position.y);
-  std::cout<<"v: "<<(double)vel.linear.x<<" w: "<<(double)vel.angular.z<<std::endl;
-  std::cout<<"alpha: "<<alpha/M_PI*180<<" delta: "<<delta/M_PI*180<<std::endl;
-  // std::cout<<"r: "<<r<<" r_l: "<<r_l<<" r_r: "<<r_r<<std::endl;
-  std::cout<<"steer_l: "<<-cmd_pos.steer_l/M_PI*180<<" steer_r: "<<-cmd_pos.steer_r/M_PI*180<<std::endl;
-  std::cout<<"current_theta: "<<current_pose_.theta<<std::endl;
+
+  // 制御入力の表示
+  std::cout << "v: " << (double)vel.linear.x << " w: "<<(double)vel.angular.z << std::endl;
+  std::cout << "alpha: " << alpha/M_PI*180 << " delta: " << delta/M_PI*180 << std::endl;
+  std::cout << "steer_l: " << -cmd_pos.steer_l/M_PI*180 << " steer_r: " << -cmd_pos.steer_r/M_PI*180 << std::endl;
+  std::cout << "current_theta: " << current_pose_.theta << std::endl;
 }
 
 // 軌跡の可視化
@@ -474,7 +476,7 @@ void DualPurePursuitPlanner::process()
 
     else ROS_WARN_STREAM("cannot receive path");
     ros::spinOnce();
-    std::cout<<"=============================="<<std::endl;
+    std::cout << "==============================" << std::endl;
     loop_rate.sleep();
   }
 }

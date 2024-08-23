@@ -114,13 +114,4 @@
 
   <!-- rviz -->
   <node pkg="rviz" type="rviz" name="sim_rviz" args="-d $(find pedsim_simulator)/rviz/with_ccv$(arg ns).rviz" if="$(arg visualize)"/>
-
-  <!-- =============== data_matomerun =============== -->
-  <!-- config file path -->
-  <arg name="human_dist_calculator_settings" default="$(find robomech2024)/config/param/coco50_hdc.yaml"/>
-
-  <!-- node launch -->
-  <node pkg="human_dist_calculator" type="human_dist_calculator_node" name="human_dist_calculator" output="screen">
-    <rosparam command="load" file="$(arg human_dist_calculator_settings)"/>
-  </node>
 </launch>
